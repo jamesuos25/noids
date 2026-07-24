@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv/
+
+# OS files
+.DS_Store
+
+# Excluded folders & files
+results/
+documentation/
+claude_review.md
+
+evaluate_transfer_matrix.py
+test_sim.py
+collate_results.py
