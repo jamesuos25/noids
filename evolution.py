@@ -145,7 +145,7 @@ def run_experiment(generations=100, pop_size=50, wind_strength=0.0, experiment_n
         random.seed(ea_seed)
         np.random.seed(ea_seed)
 
-    num_cores = max(1, mp.cpu_count() - 2)
+    num_cores = 8
     seed_str = f" | EA Seed = {ea_seed}" if ea_seed is not None else ""
     print(f"\n=======================================================")
     print(f" Starting Experiment: {experiment_name.upper()} (Wind = {wind_strength}{seed_str})")
