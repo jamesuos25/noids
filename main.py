@@ -15,9 +15,8 @@ CONDITION_KEYS = list(WIND_CONDITIONS.keys())
 
 # Seed Batches
 SEED_BATCHES = {
-    1: [201, 202, 203, 204, 205],
-    2: [206, 207, 208, 209, 210],
-    3: [201, 202, 203, 204, 205, 206, 207, 208, 209, 210]
+    1: [201, 202, 203],
+    2: [204, 205, 206]
 }
 
 
@@ -32,14 +31,14 @@ def parse_args():
     parser.add_argument(
         "--batch",
         type=int,
-        choices=[1, 2, 3],
-        help="Seed batch: 1 (Seeds 201..205), 2 (Seeds 206..210), 3 (All 10 seeds)"
+        choices=[1, 2],
+        help="Seed batch: 1 (Seeds 201, 202, 203), 2 (Seeds 204, 205, 206)"
     )
     parser.add_argument(
         "--generations",
         type=int,
-        default=100,
-        help="Number of generations (default: 100)"
+        default=60,
+        help="Number of generations (default: 60)"
     )
     parser.add_argument(
         "--pop",
@@ -79,19 +78,18 @@ def select_condition_interactive():
 def select_batch_interactive():
     print("\n-------------------------------------------------------")
     print("Select EA Seed Batch to run on this machine:\n")
-    print("  [1] Batch 1: Seeds 201..205 (5 Runs)")
-    print("  [2] Batch 2: Seeds 206..210 (5 Runs)")
-    print("  [3] All 10 Seeds: 201..210 (10 Runs)")
+    print("  [1] Batch 1: Seeds 201, 202, 203 (3 Runs)")
+    print("  [2] Batch 2: Seeds 204, 205, 206 (3 Runs)")
     print("-------------------------------------------------------")
 
     while True:
         try:
-            choice = input("Enter choice [1-3] (default: 1): ").strip()
+            choice = input("Enter choice [1-2] (default: 1): ").strip()
             if not choice:
                 return 1
-            if choice in ["1", "2", "3"]:
+            if choice in ["1", "2"]:
                 return int(choice)
-            print("Please enter 1, 2, or 3.")
+            print("Please enter 1 or 2.")
         except (ValueError, KeyboardInterrupt, EOFError):
             print("\nExiting.")
             sys.exit(0)
@@ -110,8 +108,8 @@ def main():
     print(f" LAUNCHING EXPERIMENT FOR CONDITION: {condition.upper()}")
     print(f" Wind Strength  : {wind_strength:.2f}")
     print(f" EA Seed Batch  : Batch {batch_num} ({len(seeds_to_run)} seeds: {seeds_to_run})")
-    print(f" Generations    : {args.generations} | Population: {args.pop} | Eval Seeds: 10")
-    print(f" Output Folder  : results/condition_{condition}/")
+    print(f" Generations    : {args.generations} | Population: {args.pop} | Eval Seeds: 5")
+    print(f" Output Folder  : results/condition_{condition}_batch_{batch_num}/")
     print("=======================================================\n")
 
     for i, seed in enumerate(seeds_to_run, start=1):
@@ -121,12 +119,13 @@ def main():
             pop_size=args.pop,
             wind_strength=wind_strength,
             experiment_name=condition,
-            ea_seed=seed
+            ea_seed=seed,
+            batch_num=batch_num
         )
 
     print("\n=======================================================")
     print(f" ALL RUNS COMPLETED FOR CONDITION: {condition.upper()}!")
-    print(f" Output files saved to results/condition_{condition}/")
+    print(f" Output files saved to results/condition_{condition}_batch_{batch_num}/")
     print("=======================================================")
 
 

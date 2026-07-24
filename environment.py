@@ -82,66 +82,75 @@ class Environment:
 
         return flock_center, global_avg_heading
 
-    def get_local_neighbors(self, boid, all_boids):
-        """
-        Returns a list of all other boids sitting within this boid's 
-        perception radius (150 pixels) under minimum image convention.
-        """
-        neighbors = []
-        for choice in all_boids:
-            if choice is not boid:
-                # Toroidal Euclidean distance calculation
-                dist = toroidal_distance(boid.position, choice.position, self.bounds)
-                if dist <= self.perception_radius:
-                    neighbors.append(choice)
-        return neighbors
-
     def step(self, boids):
         """
         Advances the physical simulation forward by 1 frame (1 step).
 
+        Uses a single vectorized NxN pairwise distance computation to replace
+        O(n^2) Python-level neighbor search loops. All neighbor lookups, nearest-
+        neighbor finding, and local heading calculations use matrix indexing.
+
         Process:
         1. Update global dynamic wind (temporal stochastic drift and gusts).
-        2. Compute global flock center of mass and average heading.
-        3. For each boid: gather local neighbors within perception radius.
-        4. Calculate local average heading of those neighbors.
+        2. Compute NxN toroidal displacement and distance matrices (single vectorized op).
+        3. Compute global flock center of mass and average heading.
+        4. For each boid: find local neighbors and nearest via matrix indexing.
         5. Query boid's neural network for internal steering force.
-        6. Retrieve current atmospheric wind force at boid's position.
-        7. Integrate unified physics update step for all boids simultaneously.
+        6. Integrate unified physics update step for all boids simultaneously.
         """
         self.frame_count += 1
 
         # 1. Update temporal global dynamic wind vector
         self.update_wind()
 
-        # 2. Compute global flock metrics
-        flock_center, global_avg_heading = self.compute_flock_metrics(boids)
+        num_boids = len(boids)
+        positions = np.array([b.position for b in boids])
+        velocities = np.array([b.velocity for b in boids])
+
+        # 2. Single vectorized NxN pairwise computation (replaces ~1700 individual calls)
+        # disp_matrix[i,j] = shortest displacement vector FROM boid i TO boid j (MIC)
+        bounds_arr = np.asarray(self.bounds, dtype=np.float64)
+        raw_diff = positions[np.newaxis, :, :] - positions[:, np.newaxis, :]
+        disp_matrix = (raw_diff + bounds_arr / 2.0) % bounds_arr - bounds_arr / 2.0
+        dist_matrix = np.linalg.norm(disp_matrix, axis=-1)
+        np.fill_diagonal(dist_matrix, np.inf)
+
+        # 3. Flock-level metrics (inlined to avoid redundant position extraction)
+        flock_center = toroidal_center_of_mass(positions, self.bounds)
+        avg_velocity = np.mean(velocities, axis=0)
+        global_avg_heading = np.arctan2(avg_velocity[1], avg_velocity[0])
 
         # Store forces computed in this frame before applying them
         steering_forces = []
-        wind_forces = []
 
-        for boid in boids:
-            # Gather local neighbors within perception radius (150px)
-            neighbors = self.get_local_neighbors(boid, boids)
+        for i, boid in enumerate(boids):
+            # 4. Neighbor lookup via matrix indexing (replaces O(n) Python loop)
+            neighbor_mask = dist_matrix[i] <= self.perception_radius
+            neighbor_indices = np.where(neighbor_mask)[0]
+            has_neighbors = len(neighbor_indices) > 0
 
             # Compute local average heading (fall back to global if no local neighbors)
-            if len(neighbors) > 0:
-                local_velocities = np.array([n.velocity for n in neighbors])
-                avg_v = np.mean(local_velocities, axis=0)
+            if has_neighbors:
+                avg_v = np.mean(velocities[neighbor_indices], axis=0)
                 local_heading = np.arctan2(avg_v[1], avg_v[0])
+
+                # Nearest perceived neighbor via precomputed matrix
+                local_nearest = np.argmin(dist_matrix[i, neighbor_indices])
+                nearest_global = neighbor_indices[local_nearest]
+                nearest_dist = dist_matrix[i, nearest_global]
+                nearest_disp = disp_matrix[i, nearest_global]
             else:
                 local_heading = global_avg_heading
+                nearest_dist = 0.0
+                nearest_disp = np.zeros(2)
 
-            # 1. Calculate Neural Steering Force
-            steer = boid.compute_steering(neighbors, flock_center, local_heading, bounds=self.bounds)
-
-            # 2. Retrieve current atmospheric wind force
-            wind = self.get_wind_at_position(boid.position)
-
+            # 5. Calculate Neural Steering Force (with precomputed neighbor data)
+            steer = boid.compute_steering(
+                nearest_dist, nearest_disp, has_neighbors,
+                flock_center, local_heading, bounds=self.bounds
+            )
             steering_forces.append(steer)
-            wind_forces.append(wind)
 
-        # Execute unified physics update for all boids simultaneously
+        # 6. Execute unified physics update for all boids simultaneously
         for i, boid in enumerate(boids):
-            boid.update(steering_forces[i], wind_forces[i], self.bounds)
+            boid.update(steering_forces[i], self.current_wind, self.bounds)

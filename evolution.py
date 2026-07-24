@@ -8,7 +8,7 @@ import numpy as np
 from numpy.random import SeedSequence, default_rng
 import pandas as pd
 # pyrefly: ignore [missing-import]
-from deap import base, creator, tools, algorithms
+from deap import base, creator, tools
 from tqdm import tqdm
 
 from boid import Boid
@@ -29,7 +29,7 @@ WARMUP_FRAMES = 100
 EVAL_FRAMES = SIM_FRAMES - WARMUP_FRAMES  # 600
 PERCEPTION_RADIUS = 150.0
 ARENA_BOUNDS = (800, 600)
-EVAL_SEEDS = [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]  # Fixed seed suite for Common Random Numbers
+EVAL_SEEDS = [101, 102, 103, 104, 105]  # Fixed seed suite for Common Random Numbers
 
 # Genome Configuration: 43 Genes (42 Neural Parameters + 1 Sigma Gene)
 NUM_GENES = 43
@@ -64,7 +64,7 @@ def clamp_individual(individual):
 
 def evaluate_individual(individual, wind_strength=0.0):
     """
-    Evaluates a candidate solution across the 10 fixed environmental seeds.
+    Evaluates a candidate solution across the 5 fixed environmental seeds.
     Returns overall fitness (mean), seed_std, alignment, cohesion, and separation.
     """
     mean_params = individual[:42]
@@ -126,7 +126,7 @@ def evaluate_individual(individual, wind_strength=0.0):
         seed_cohesions.append(total_cohesion / EVAL_FRAMES)
         seed_separations.append(total_separation / EVAL_FRAMES)
 
-    # Overall fitness = average across all 10 seeds; seed_std = variance across seeds
+    # Overall fitness = average across all 5 seeds; seed_std = variance across seeds
     overall_fitness = float(np.mean(seed_fitnesses))
     seed_std = float(np.std(seed_fitnesses))
     alignment = float(np.mean(seed_alignments))
@@ -135,17 +135,78 @@ def evaluate_individual(individual, wind_strength=0.0):
     return overall_fitness, seed_std, alignment, cohesion, separation
 
 
-def run_experiment(generations=100, pop_size=50, wind_strength=0.0, experiment_name="calm", ea_seed=None, cxpb=0.8, mutpb=0.3):
+def save_checkpoint(history, population, experiment_name, ea_seed, batch_num=None):
+    """
+    Saves generational metrics, population snapshots, and champion genomes to disk
+    after every generation to guarantee zero data loss if an execution is interrupted.
+    """
+    batch_str = f"_batch_{batch_num}" if batch_num is not None else ""
+    results_dir = f"results/condition_{experiment_name}{batch_str}"
+    os.makedirs(results_dir, exist_ok=True)
+    os.makedirs("results", exist_ok=True)
+
+    # 1. Save Generational Metrics CSV
+    df = pd.DataFrame(history)
+    df["ea_seed"] = ea_seed if ea_seed is not None else 0
+    df["wind_condition"] = experiment_name
+    cols = ["ea_seed", "wind_condition"] + [c for c in df.columns if c not in ["ea_seed", "wind_condition"]]
+    df = df[cols]
+
+    csv_path = os.path.join(results_dir, "generational_metrics.csv")
+    if os.path.exists(csv_path):
+        existing_df = pd.read_csv(csv_path)
+        if "ea_seed" in existing_df.columns:
+            existing_df = existing_df[existing_df["ea_seed"] != df["ea_seed"].iloc[0]]
+        combined_df = pd.concat([existing_df, df], ignore_index=True)
+        combined_df.to_csv(csv_path, index=False)
+    else:
+        df.to_csv(csv_path, index=False)
+
+    # 2. Save Final/Current Population Snapshot CSV
+    pop_data = []
+    for ind in population:
+        pop_data.append({
+            "ea_seed": ea_seed if ea_seed is not None else 0,
+            "wind_condition": experiment_name,
+            "fitness": ind.fitness.values[0] if ind.fitness.valid else 0.0,
+            "sigma": ind[42],
+            "seed_std": getattr(ind, 'seed_std', 0.0),
+            "alignment": getattr(ind, 'alignment', 0.0),
+            "cohesion": getattr(ind, 'cohesion', 0.0),
+            "separation": getattr(ind, 'separation', 0.0)
+        })
+    pop_df = pd.DataFrame(pop_data)
+    pop_csv_path = os.path.join(results_dir, "final_populations.csv")
+    if os.path.exists(pop_csv_path):
+        existing_pop = pd.read_csv(pop_csv_path)
+        if "ea_seed" in existing_pop.columns:
+            existing_pop = existing_pop[existing_pop["ea_seed"] != pop_df["ea_seed"].iloc[0]]
+        combined_pop = pd.concat([existing_pop, pop_df], ignore_index=True)
+        combined_pop.to_csv(pop_csv_path, index=False)
+    else:
+        pop_df.to_csv(pop_csv_path, index=False)
+
+    # 3. Save Champion Genomes
+    valid_inds = [ind for ind in population if ind.fitness.valid]
+    if valid_inds:
+        best_ind = tools.selBest(valid_inds, 1)[0]
+        best_genome_arr = np.array(best_ind)
+        seed_tag = f"_seed_{ea_seed}" if ea_seed is not None else ""
+        np.save(os.path.join(results_dir, f"best_genome{seed_tag}.npy"), best_genome_arr)
+        np.save(f"results/best_genome_{experiment_name}.npy", best_genome_arr)
+
+
+def run_experiment(generations=60, pop_size=50, wind_strength=0.0, experiment_name="calm", ea_seed=None, batch_num=None, cxpb=0.8, mutpb=0.3):
     """
     Main Evolutionary Loop using DEAP and multiprocessing across all available CPU cores.
     Runs for N generations and logs detailed statistics to CSV for plot generation.
-    Accepts an explicit ea_seed for statistical replication across multiple machine runs.
+    Accepts an explicit ea_seed and batch_num for statistical replication across multiple machine runs.
     """
     if ea_seed is not None:
         random.seed(ea_seed)
         np.random.seed(ea_seed)
 
-    num_cores = 8
+    num_cores = 14
     seed_str = f" | EA Seed = {ea_seed}" if ea_seed is not None else ""
     print(f"\n=======================================================")
     print(f" Starting Experiment: {experiment_name.upper()} (Wind = {wind_strength}{seed_str})")
@@ -239,6 +300,9 @@ def run_experiment(generations=100, pop_size=50, wind_strength=0.0, experiment_n
             "gen_time_sec": [gen0_time],
             "evaluations_count": [len(population)]
         }
+
+        # Save Gen 0 Checkpoint
+        save_checkpoint(history, population, experiment_name, ea_seed, batch_num=batch_num)
 
         for gen in range(1, generations + 1):
             gen_start_time = time.time()
@@ -359,6 +423,9 @@ def run_experiment(generations=100, pop_size=50, wind_strength=0.0, experiment_n
                 f"Time: {gen_duration:.2f}s"
             )
 
+            # Flush generation metrics & population checkpoint to disk immediately
+            save_checkpoint(history, population, experiment_name, ea_seed, batch_num=batch_num)
+
     # Final Timings Summary
     total_exp_time = time.time() - exp_start_time
     total_evaluations_count = sum(history["evaluations_count"])
@@ -376,65 +443,13 @@ def run_experiment(generations=100, pop_size=50, wind_strength=0.0, experiment_n
     print(f" Total Execution Time      : {int(mins)}m {secs:.2f}s ({total_exp_time:.2f} seconds)")
     print(f" Avg Time / Generation     : {avg_gen_time:.2f} seconds")
     print(f" Total Candidates Evaluated: {total_evaluations_count}")
-    print(f" Avg Time / Candidate      : {avg_candidate_wall_time:.3f} seconds (across 10 seeds)")
+    print(f" Avg Time / Candidate      : {avg_candidate_wall_time:.3f} seconds (across 5 seeds)")
     print(f" Avg Time / Simulation Run : {avg_sim_wall_time * 1000:.1f} ms (single 700-frame run)")
     print("-------------------------------------------------------\n")
 
-    # Determine results destination directory (Condition-based organization for 5-machine workflow)
-    results_dir = f"results/condition_{experiment_name}"
-    os.makedirs(results_dir, exist_ok=True)
-
-    # Save generational results to CSV
-    df = pd.DataFrame(history)
-    df["ea_seed"] = ea_seed if ea_seed is not None else 0
-    df["wind_condition"] = experiment_name
-
-    # Reorder columns to put ea_seed and wind_condition first
-    cols = ["ea_seed", "wind_condition"] + [c for c in df.columns if c not in ["ea_seed", "wind_condition"]]
-    df = df[cols]
-
-    csv_path = os.path.join(results_dir, "generational_metrics.csv")
-    if os.path.exists(csv_path):
-        existing_df = pd.read_csv(csv_path)
-        # Filter out existing data for this ea_seed if re-running
-        if "ea_seed" in existing_df.columns:
-            existing_df = existing_df[existing_df["ea_seed"] != df["ea_seed"].iloc[0]]
-        combined_df = pd.concat([existing_df, df], ignore_index=True)
-        combined_df.to_csv(csv_path, index=False)
-    else:
-        df.to_csv(csv_path, index=False)
-    print(f"Generational metrics saved to {csv_path}")
-
-    # Save final population snapshot
-    pop_data = []
-    for ind in population:
-        pop_data.append({
-            "ea_seed": ea_seed if ea_seed is not None else 0,
-            "wind_condition": experiment_name,
-            "fitness": ind.fitness.values[0],
-            "sigma": ind[42],
-            "seed_std": getattr(ind, 'seed_std', 0.0),
-            "alignment": getattr(ind, 'alignment', 0.0),
-            "cohesion": getattr(ind, 'cohesion', 0.0),
-            "separation": getattr(ind, 'separation', 0.0)
-        })
-    pop_df = pd.DataFrame(pop_data)
-    pop_csv_path = os.path.join(results_dir, "final_populations.csv")
-    if os.path.exists(pop_csv_path):
-        existing_pop = pd.read_csv(pop_csv_path)
-        if "ea_seed" in existing_pop.columns:
-            existing_pop = existing_pop[existing_pop["ea_seed"] != pop_df["ea_seed"].iloc[0]]
-        combined_pop = pd.concat([existing_pop, pop_df], ignore_index=True)
-        combined_pop.to_csv(pop_csv_path, index=False)
-    else:
-        pop_df.to_csv(pop_csv_path, index=False)
-    print(f"Final population snapshot metrics saved to {pop_csv_path}")
+    # Final Checkpoint Save
+    save_checkpoint(history, population, experiment_name, ea_seed, batch_num=batch_num)
 
     # Return best individual genome for visualization
     best_overall_ind = tools.selBest(population, 1)[0]
-    best_genome_arr = np.array(best_overall_ind)
-    
-    seed_tag = f"_seed_{ea_seed}" if ea_seed is not None else ""
-    np.save(os.path.join(results_dir, f"best_genome{seed_tag}.npy"), best_genome_arr)
-    np.save(f"results/best_genome_{experiment_name}.npy", best_genome_arr)
     return best_overall_ind

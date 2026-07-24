@@ -85,25 +85,23 @@ class Boid:
         """Returns orientation angle in radians."""
         return np.arctan2(self.velocity[1], self.velocity[0])
 
-    def get_sensory_inputs(self, neighbours, flock_center, average_heading, max_sensor_dist=200.0, bounds=(800.0, 600.0)):
+    def get_sensory_inputs(self, nearest_dist, nearest_disp, has_neighbors, flock_center, average_heading, max_sensor_dist=200.0, bounds=(800.0, 600.0)):
         """
-        Calculates 5 relative polar inputs for the neural network using Minimum Image Convention.
+        Calculates 5 relative polar inputs for the neural network.
+        Accepts precomputed nearest-neighbor data from the environment's distance matrix.
         All angles are relative to the boid's current heading [-1, 1].
         """
         heading = self.get_heading_angle()
 
-        # 1 & 2: Nearest Neighbour distance and relative angle
-        if len(neighbours) > 0:
-            distances = [toroidal_distance(self.position, n.position, bounds) for n in neighbours]
-            nearest_idx = np.argmin(distances)
-            nearest_dist = min(distances[nearest_idx] / max_sensor_dist, 1.0)
+        # 1 & 2: Nearest Neighbour distance and relative angle (precomputed)
+        if has_neighbors:
+            norm_nearest_dist = min(nearest_dist / max_sensor_dist, 1.0)
 
-            rel_vec = toroidal_displacement(self.position, neighbours[nearest_idx].position, bounds)
-            rel_angle = np.arctan2(rel_vec[1], rel_vec[0]) - heading
+            rel_angle = np.arctan2(nearest_disp[1], nearest_disp[0]) - heading
             rel_angle = (rel_angle + np.pi) % (2 * np.pi) - np.pi  # Wrap to [-pi, pi]
             nearest_angle = rel_angle / np.pi  # Normalize to [-1, 1]
         else:
-            nearest_dist = 1.0
+            norm_nearest_dist = 1.0
             nearest_angle = 0.0
 
         # 3 & 4: Center of Mass distance and relative angle under toroidal boundary
@@ -115,13 +113,14 @@ class Boid:
         # 5: Relative average heading of local group
         rel_avg_heading = ((average_heading - heading + np.pi) % (2 * np.pi) - np.pi) / np.pi
 
-        return np.array([nearest_dist, nearest_angle, center_dist, center_angle, rel_avg_heading])
+        return np.array([norm_nearest_dist, nearest_angle, center_dist, center_angle, rel_avg_heading])
 
-    def compute_steering(self, neighbours, flock_center, average_heading, bounds=(800.0, 600.0)):
+    def compute_steering(self, nearest_dist, nearest_disp, has_neighbors, flock_center, average_heading, bounds=(800.0, 600.0)):
         """
         Queries the neural controller to generate a 2D steering vector.
+        Accepts precomputed nearest-neighbor data from the environment's distance matrix.
         """
-        inputs = self.get_sensory_inputs(neighbours, flock_center, average_heading, bounds=bounds)
+        inputs = self.get_sensory_inputs(nearest_dist, nearest_disp, has_neighbors, flock_center, average_heading, bounds=bounds)
         torque, thrust = self.brain.forward(inputs)
 
         # Convert scalar torque to heading change (+/- 45 degree turn)
