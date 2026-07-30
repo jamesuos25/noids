@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def toroidal_displacement(pos1, pos2, bounds=(800.0, 600.0)):
+def toroidal_displacement(pos1, pos2, bounds=(1200.0, 900.0)):
     """
     Calculates the shortest displacement vector from pos1 to pos2 on a 2D torus
     using the Minimum Image Convention.
@@ -13,7 +13,7 @@ def toroidal_displacement(pos1, pos2, bounds=(800.0, 600.0)):
     return (delta + bounds / 2.0) % bounds - bounds / 2.0
 
 
-def toroidal_distance(pos1, pos2, bounds=(800.0, 600.0)):
+def toroidal_distance(pos1, pos2, bounds=(1200.0, 900.0)):
     """
     Calculates Euclidean distance under Minimum Image Convention on a 2D torus.
     """
@@ -23,7 +23,7 @@ def toroidal_distance(pos1, pos2, bounds=(800.0, 600.0)):
     return np.linalg.norm(disp, axis=-1)
 
 
-def toroidal_center_of_mass(positions, bounds=(800.0, 600.0)):
+def toroidal_center_of_mass(positions, bounds=(1200.0, 900.0)):
     """
     Computes the true center of mass of 2D positions on a torus using
     directional statistics (circular mean).

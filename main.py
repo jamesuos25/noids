@@ -108,7 +108,7 @@ def main():
     print(f" LAUNCHING EXPERIMENT FOR CONDITION: {condition.upper()}")
     print(f" Wind Strength  : {wind_strength:.2f}")
     print(f" EA Seed Batch  : Batch {batch_num} ({len(seeds_to_run)} seeds: {seeds_to_run})")
-    print(f" Generations    : {args.generations} | Population: {args.pop} | Eval Seeds: 5")
+    print(f" Generations    : {args.generations} | Population: {args.pop} | Eval Seeds: 10 | Frames: 1200")
     print(f" Output Folder  : results/condition_{condition}_batch_{batch_num}/")
     print("=======================================================\n")
 

@@ -20,3 +20,7 @@ claude_review.md
 evaluate_transfer_matrix.py
 test_sim.py
 collate_results.py
+defunct_boid.py
+defunct_fitness.py
+test_flocking_fix.py
+

@@ -16,7 +16,7 @@ class Environment:
       so that wind_strength=1.0 produces a peak force equal to
       the boid's maximum steering force.
     """
-    def __init__(self, width=800, height=600, wind_strength=0.0, perception_radius=150.0, max_boid_force=0.3, rng=None):
+    def __init__(self, width=1200, height=900, wind_strength=0.0, perception_radius=200.0, max_boid_force=0.3, rng=None):
         self.width = width
         self.height = height
         self.bounds = (width, height)

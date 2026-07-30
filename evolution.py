@@ -24,15 +24,15 @@ creator.create("Individual", list, fitness=creator.FitnessMax)
 
 # Simulation Parameters
 NUM_BOIDS = 35
-SIM_FRAMES = 700
-WARMUP_FRAMES = 100
-EVAL_FRAMES = SIM_FRAMES - WARMUP_FRAMES  # 600
-PERCEPTION_RADIUS = 150.0
-ARENA_BOUNDS = (800, 600)
-EVAL_SEEDS = [101, 102, 103, 104, 105]  # Fixed seed suite for Common Random Numbers
+SIM_FRAMES = 1200
+WARMUP_FRAMES = 200
+EVAL_FRAMES = SIM_FRAMES - WARMUP_FRAMES  # 1000 frames
+PERCEPTION_RADIUS = 200.0
+ARENA_BOUNDS = (1200, 900)
+EVAL_SEEDS = [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]  # 10 CRN Seeds
 
-# Genome Configuration: 43 Genes (42 Neural Parameters + 1 Sigma Gene)
-NUM_GENES = 43
+# Genome Configuration: 48 Genes (47 Neural Parameters + 1 Sigma Gene)
+NUM_GENES = 48
 GENE_BOUND_LOW = -3.0
 GENE_BOUND_HIGH = 3.0
 SIGMA_GENE_MIN = 0.001
@@ -40,10 +40,10 @@ SIGMA_GENE_MAX = 0.500
 
 
 def create_individual():
-    """Generates a random 43-gene candidate solution."""
-    # Genes 0-41: Initial neural weights/biases sampled [-1, 1]
-    params = [random.uniform(-1.0, 1.0) for _ in range(42)]
-    # Gene 42: Initial variance gene (sigma) sampled [0.01, 0.10]
+    """Generates a random 48-gene candidate solution."""
+    # Genes 0-46: Initial neural weights/biases sampled [-1, 1]
+    params = [random.uniform(-1.0, 1.0) for _ in range(47)]
+    # Gene 47: Initial variance gene (sigma) sampled [0.01, 0.10]
     sigma_gene = random.uniform(0.01, 0.10)
     params.append(sigma_gene)
     return creator.Individual(params)
@@ -55,11 +55,11 @@ def clamp_individual(individual):
     following crossover or mutation operators.
     """
     # Clamp neural parameters to [-3.0, 3.0]
-    for i in range(42):
+    for i in range(47):
         individual[i] = max(-3.0, min(3.0, individual[i]))
 
     # Clamp sigma gene to strictly positive bounds [0.001, 0.500]
-    individual[42] = max(SIGMA_GENE_MIN, min(SIGMA_GENE_MAX, individual[42]))
+    individual[47] = max(SIGMA_GENE_MIN, min(SIGMA_GENE_MAX, individual[47]))
 
 
 def evaluate_individual(individual, wind_strength=0.0):
@@ -67,8 +67,8 @@ def evaluate_individual(individual, wind_strength=0.0):
     Evaluates a candidate solution across the 5 fixed environmental seeds.
     Returns overall fitness (mean), seed_std, alignment, cohesion, and separation.
     """
-    mean_params = individual[:42]
-    sigma_gene = individual[42]
+    mean_params = individual[:47]
+    sigma_gene = individual[47]
 
     seed_fitnesses = []
     seed_alignments = []
@@ -169,7 +169,7 @@ def save_checkpoint(history, population, experiment_name, ea_seed, batch_num=Non
             "ea_seed": ea_seed if ea_seed is not None else 0,
             "wind_condition": experiment_name,
             "fitness": ind.fitness.values[0] if ind.fitness.valid else 0.0,
-            "sigma": ind[42],
+            "sigma": ind[47],
             "seed_std": getattr(ind, 'seed_std', 0.0),
             "alignment": getattr(ind, 'alignment', 0.0),
             "cohesion": getattr(ind, 'cohesion', 0.0),
@@ -261,7 +261,7 @@ def run_experiment(generations=60, pop_size=50, wind_strength=0.0, experiment_na
 
         # Print Gen 00 Baseline
         init_fits = [ind.fitness.values[0] for ind in population]
-        init_sigmas = [ind[42] for ind in population]
+        init_sigmas = [ind[47] for ind in population]
         init_seed_stds = [getattr(ind, 'seed_std', 0.0) for ind in population]
         init_aligns = [getattr(ind, 'alignment', 0.0) for ind in population]
         init_cohs = [getattr(ind, 'cohesion', 0.0) for ind in population]
@@ -366,7 +366,7 @@ def run_experiment(generations=60, pop_size=50, wind_strength=0.0, experiment_na
 
             # 5. Record Detailed Statistics
             fits = [ind.fitness.values[0] for ind in population]
-            sigmas = [ind[42] for ind in population]
+            sigmas = [ind[47] for ind in population]
             seed_stds = [getattr(ind, 'seed_std', 0.0) for ind in population]
             aligns = [getattr(ind, 'alignment', 0.0) for ind in population]
             cohs = [getattr(ind, 'cohesion', 0.0) for ind in population]
